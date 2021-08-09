@@ -1,0 +1,31 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "api for fora-soft-chat",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vanilla64/fora-soft-chat.git"
+  },
+  "keywords": [
+    "api",
+    "chat",
+    "test"
+  ],
+  "author": "Sergey Mashin",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/vanilla64/fora-soft-chat/issues"
+  },
+  "homepage": "https://github.com/vanilla64/fora-soft-chat#readme",
+  "dependencies": {
+    "express": "^4.17.1"
+  },
+  "devDependencies": {
+    "nodemon": "^2.0.12"
+  }
+}
