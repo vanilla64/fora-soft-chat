@@ -1,255 +1,168 @@
-import React, { useState } from "react"
+import React, { useEffect, useState, useRef, useCallback } from "react"
 import './App.css'
+import { Switch, Route, Redirect, useHistory } from 'react-router-dom'
+import io from "socket.io-client"
 import GlobalContext from "./contexts/GlobalContext"
-import {
-  AppBar,
-  Button,
-  Drawer,
-  makeStyles,
-  useTheme,
-  Toolbar,
-  Typography,
-  Paper,
-  Divider,
-  TextField
-} from "@material-ui/core";
+import ROUTES_MAP from "./utils/ROUTES_MAP"
+import ChatPage from "./pages/ChatPage"
+import StartPage from "./pages/StartPage"
+import { setDate } from "./utils/setDate"
+
+const socket = io.connect("http://localhost:4000")
 
 function App() {
-  const [state, setState] = React.useState({
-    top: false,
-    left: false,
-    bottom: false,
-    right: false,
-  });
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [user, setUser] = useState({
+    name: '',
+    lastName: '',
+    id: '',
+  })
+  const [users, setUsers] = useState([])
+  const [messages, setMessages] = useState([])
+  const [messageFormValue, setMessageFormValue] = useState({ text: '' })
+  const [loginFormValues, setLoginFormValues] = useState({
+    name: '',
+    lastName: ''
+  })
 
-  const drawerWidth = 240;
+  const { MAIN, START, CHAT } = ROUTES_MAP
 
-  const useStyles = makeStyles((theme) => ({
-    appBar: {
-      display: "flex",
-      justifyContent: "space-between",
-      transition: theme.transitions.create(['margin', 'width'], {
-        easing: theme.transitions.easing.sharp,
-        duration: theme.transitions.duration.leavingScreen,
-      }),
-    },
-    appBarShift: {
-      width: `calc(100% - ${drawerWidth}px)`,
-      marginLeft: drawerWidth,
-      transition: theme.transitions.create(['margin', 'width'], {
-        easing: theme.transitions.easing.easeOut,
-        duration: theme.transitions.duration.enteringScreen,
-      }),
-    },
-    drawer: {
-      width: drawerWidth,
-      flexShrink: 0,
-    },
-    drawerPaper: {
-      width: drawerWidth,
-    },
-    toolbar: {
-      display: "flex",
-      justifyContent: "space-between"
-    },
-    form: {
-      background: '#fafafa',
-      position: "fixed",
-      bottom: 0,
-      left: 0,
-      width: '100%',
-      padding: '4px 20px',
-      boxSizing: "border-box",
-      display: 'flex',
-      alignItems: 'center',
-    },
-    formShift: {
-      background: '#fafafa',
-      position: "fixed",
-      bottom: 0,
-      left: 0,
-      display: 'flex',
-      alignItems: 'center',
-      width: `calc(100% - ${drawerWidth}px)`,
-      marginLeft: drawerWidth,
-      transition: theme.transitions.create(['margin', 'width'], {
-        easing: theme.transitions.easing.easeOut,
-        duration: theme.transitions.duration.enteringScreen,
-      }),
-    },
-    input: {
-      // marginLeft: theme.spacing(1),
-      // flex: 1,
-      width: '400px'
-    },
-    divider: {
-      height: 28,
-      margin: 4,
-    },
-    messagesContainer: {
-      display: "flex",
-      flexDirection: "column",
-      justifyContent: "flex-start",
-      alignItems: 'flex-start',
-      padding: '30px 4%',
-      boxSizing: "border-box",
-      transition: theme.transitions.create(['margin', 'width'], {
-        easing: theme.transitions.easing.sharp,
-        duration: theme.transitions.duration.leavingScreen,
-      }),
-      marginTop: 64,
-      background: '#a6d4fa',
-      width: '100%',
-      height: `calc(100vh - 80px - 64px)`,
-      overflow: "scroll"
-    },
-    messagesContainerShift: {
-      width: `calc(100% - ${drawerWidth}px)`,
-      marginLeft: drawerWidth,
-      transition: theme.transitions.create(['margin', 'width'], {
-        easing: theme.transitions.easing.easeOut,
-        duration: theme.transitions.duration.enteringScreen,
-      }),
-      // overflow: "scroll"
-    },
-    message: {
-      margin:'0 0 20px',
-      padding: '10px 20px',
-      width: '55%',
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "flex-start",
-    },
-    userMessage: {
-      alignSelf: "flex-end",
-      background: '#64b5f6'
-    },
-    messageTitle: {
-      marginBottom: '10px'
-    },
-    messageText: {
-      textAlign: "left"
+  const history = useHistory()
+
+  useEffect(() => {
+    socket.on('connection', (id) => {
+      setUser(prev => {
+        return { ...prev, id }
+      })
+    })
+
+    socket.on('newUser', (data) => setUsers(data.users))
+    socket.on('userLeave', (data) => setUsers(data.users))
+    socket.on('newMessage', (data) => setMessages(prev => [...prev, data]))
+    // eslint-disable-next-line
+  }, [])
+
+  const messageListRef = useRef() // message list
+
+  const scrollToBottom = useCallback(() => { // scroll to bottom before add message in chat
+    if (!isLoggedIn) return
+    setTimeout(() => {
+      messageListRef.current.scrollTop = messageListRef.current.scrollHeight
+    }, 200)
+  }, [isLoggedIn])
+
+  useEffect(() => {
+    scrollToBottom()
+    // eslint-disable-next-line
+  }, [messages])
+
+  const handleDrawerToggle = () => setIsSidebarOpen(prev => !prev) // drawer open toggle
+
+  const handleExitClick = () => {
+    socket.emit('userLeave', user, () => {
+      setUsers(prev => prev.filter(u => u.id !== user.id))
+
+      setUser({
+        name: '',
+        lastName: '',
+        id: '',
+      })
+
+      history.push(START)
+      setIsLoggedIn(false)
+    })
+
+    socket.emit('newMessage', {
+      isRobot: true,
+      text: `Пользователь ${user.name} ${user.lastName} сделал больно и покинул чат!`,
+      createAt: setDate(),
+    })
+  }
+
+  const handleLoginFormChange = evt => {
+    const { name, value } = evt.target
+    setLoginFormValues(prev => {
+      return { ...prev, [name]: value }
+    })
+  }
+
+  const handleLoginFormSubmit = evt => {
+    evt.preventDefault()
+    socket.emit('newUser', { ...loginFormValues }, (data) => {
+      setUser(data.user)
+      setUsers(data.users)
+
+      setIsLoggedIn(true)
+      history.push(MAIN)
+
+      socket.emit('newMessage', {
+        isRobot: true,
+        text: `Пользователь ${loginFormValues.name} ${loginFormValues.lastName} сделал приятно и вошел в чат!`,
+        createAt: setDate(),
+      })
+
+      setLoginFormValues({
+        name: '',
+        lastName: ''
+      })
+    })
+  }
+
+  const handleFormMessageChange = evt => {
+    const { name, value } = evt.target
+
+    setMessageFormValue(prev => {
+      return { ...prev, [name]: value }
+    })
+  }
+
+  const handleFormMessageSubmit = evt => {
+    evt.preventDefault()
+
+    socket.emit('newMessage', {
+      name: user.name,
+      lastName: user.lastName,
+      createAt: setDate(),
+      ...messageFormValue
+    })
+
+    setMessageFormValue({ text: '' })
+  }
+
+  const ctxValue = { // values for context provider
+    user,
+    users,
+    isLoggedIn,
+    isSidebarOpen,
+    setIsSidebarOpen,
+    loginFormValues,
+    messageFormValue,
+    messageListRef,
+    handlers: {
+      handleDrawerToggle,
+      handleFormMessageChange,
+      handleLoginFormChange,
+      handleFormMessageSubmit,
+      handleLoginFormSubmit,
+      handleExitClick,
     }
-  }))
-
-  const classes = useStyles();
-  const theme = useTheme();
-
-//////////
-  const [isOpen, setIsOpen] = useState(false);
-
-  const handleDrawerToggle = () => setIsOpen(prev => !prev)
+  }
 
   return (
     <div className="App">
-      <GlobalContext.Provider>
-        <AppBar
-          className={isOpen ? `${classes.appBar, classes.appBarShift}`: classes.appBar}
-          position="fixed"
-          color="secondary"
-        >
-          <Toolbar className={classes.toolbar}>
-            <Typography variant="h4" noWrap>
-              Chats
-            </Typography>
-            <Button
-              variant="contained"
-              onClick={handleDrawerToggle}
-            >
-              { isOpen ? ' Close' : 'Open' }
-            </Button>
-          </Toolbar>
-        </AppBar>
-        <div
-          className={isOpen ? `${classes.messagesContainerShift} ${classes.messagesContainer}`: classes.messagesContainer}
-        >
-          <Paper className={`${classes.message}`} elevation={3}  >
-            <Typography className={classes.messageTitle} variant={"h5"} component={"h5"}>Name</Typography>
-            <Typography className={classes.messageText} variant={"subtitle1"} component={"p"} >
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-            </Typography>
-          </Paper>
-          <Paper className={`${classes.message}`} elevation={3}  >
-            <Typography className={classes.messageTitle} variant={"h5"} component={"h5"}>Name</Typography>
-            <Typography className={classes.messageText} variant={"subtitle1"} component={"p"} >
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-            </Typography>
-          </Paper>
-          <Paper className={`${classes.message} ${classes.userMessage}`} elevation={3}  >
-            <Typography className={classes.messageTitle} variant={"h5"} component={"h5"}>Name</Typography>
-            <Typography className={classes.messageText} variant={"subtitle1"} component={"p"} >
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-            </Typography>
-          </Paper>
-          <Paper className={`${classes.message}`} elevation={3}  >
-            <Typography className={classes.messageTitle} variant={"h5"} component={"h5"}>Name</Typography>
-            <Typography className={classes.messageText} variant={"subtitle1"} component={"p"} >
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-            </Typography>
-          </Paper>
-          <Paper className={`${classes.message}`} elevation={3}  >
-            <Typography className={classes.messageTitle} variant={"h5"} component={"h5"}>Name</Typography>
-            <Typography className={classes.messageText} variant={"subtitle1"} component={"p"} >
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-            </Typography>
-          </Paper>
-          <Paper className={`${classes.message} ${classes.userMessage}`} elevation={3}  >
-            <Typography className={classes.messageTitle} variant={"h5"} component={"h5"}>Name</Typography>
-            <Typography className={classes.messageText} variant={"subtitle1"} component={"p"} >
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-              Lorem ipsum dolor sit amet, consectetur adipisicing elit.
-            </Typography>
-          </Paper>
-        </div>
-        <Paper
-          component="form"
-          className={isOpen ? `${classes.form} ${classes.formShift}`: classes.form}
-        >
-          <TextField
-            variant={"outlined"}
-            // id="standard-full-width"
-            label="Введите сообщение"
-            style={{ margin: 8 }}
-            placeholder="Message"
-            // helperText="Full width!"
-            fullWidth
-            margin="normal"
-            InputLabelProps={{
-              shrink: true,
-            }}
-          />
-          <Button type={"submit"} variant={"text"} size={"large"} color={"primary"}>Send</Button>
-        </Paper>
-        <Drawer
-          open={isOpen}
-          className={classes.drawer}
-          classes={{ paper: classes.drawerPaper }}
-          variant="persistent"
-        >
-          <Typography variant={"h2"} component={"h2"}>RTTTTT</Typography>
-          <Typography variant={"h2"} component={"h2"}>RTTTTT</Typography>
-          <Typography variant={"h2"} component={"h2"}>RTTTTT</Typography>
-          <Typography variant={"h2"} component={"h2"}>RTTTTT</Typography>
-          <Typography variant={"h2"} component={"h2"}>RTTTTT</Typography>
-          <Typography variant={"h2"} component={"h2"}>RTTTTT</Typography>
-        </Drawer>
+      <GlobalContext.Provider value={ctxValue}>
+        <Switch>
+          <Route path={MAIN} exact>
+            { isLoggedIn ? <Redirect to={CHAT} /> : <Redirect to={START} /> }
+          </Route>
+          <Route path={START} >
+            <StartPage />
+          </Route>
+          <Route path={CHAT}>
+            { isLoggedIn ? <ChatPage messages={messages}/> : <Redirect to={MAIN}/> }
+          </Route>
+        </Switch>
       </GlobalContext.Provider>
     </div>
   )
